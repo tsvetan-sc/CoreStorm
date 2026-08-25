@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+.idea/
+
+combinations.txt
+*.part
+*.checkpoint.json
+*.checkpoint.json.tmp

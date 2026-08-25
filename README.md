@@ -1,157 +1,171 @@
-# 🔢 Ultimate Number Combination Generator ⚡  
+# CoreStorm Combination Generator
 
-**Generate all possible number combinations at lightning speed - perfect for WPA/WPA2 dictionary attacks, password recovery, and security testing!**  
+CoreStorm writes fixed-width decimal combinations in ascending order. It supports
+dependency-free CPU generation, optional CUDA acceleration, atomic output,
+checkpoints, resumable ranges, gzip, stdout, and automation-friendly exit codes.
 
-![Python](https://img.shields.io/badge/Python-3.6+-blue.svg)  
-![CUDA](https://img.shields.io/badge/CUDA-Enabled-green.svg)  
-![Performance](https://img.shields.io/badge/Performance-GPU%2FCPU-red.svg)  
+Use this software only for systems and data you own or are explicitly authorized
+to test.
 
-## 🚀 Key Features  
+## Installation
 
-- **Blazing Fast Generation**: CPU and GPU-accelerated modes  
-- **WPA/WPA2 Ready**: Perfect for generating PIN dictionaries (8-digit WPS pins, phone numbers, etc.)  
-- **Smart Batching**: Writes output in configurable batches to optimize performance  
-- **Memory Safe**: Handles huge datasets without crashing  
-- **Progress Tracking**: See real-time generation progress  
+Python 3.10 or newer is required.
 
-## 💻 Installation  
+```bash
+python -m pip install -e .
+```
 
-1. **Prerequisites**:  
-   - Python 3.6+  
-   - NVIDIA GPU (for CUDA acceleration - optional)  
+CUDA mode is optional. It requires an NVIDIA CUDA environment plus NumPy and
+Numba:
 
-2. **Install dependencies**:  
-   ```bash  
-   pip install numpy numba  
-   ```  
+```bash
+python -m pip install -e ".[gpu]"
+```
 
-## 🛠 Usage  
+CPU mode and even `--help` do not import those GPU dependencies.
 
-### Basic Generation  
-```bash  
-python generateCombinations 4  
-```  
-Generates all 4-digit combinations (0000-9999) in `combinations.txt`  
+## Usage
 
-### WPA Dictionary Generation Example  
-```bash  
-# Generate all possible 8-digit WPS pins (WPA2)  
-python generateCombinations 8 --output wpa_dictionary.txt --batch-size 10000  
-```  
+Generate `0000` through `9999`:
 
-### GPU Accelerated Generation  
-```bash  
-python generateCombinations 6 --gpu --max-gpu-chunk 50000000  
-```  
+```bash
+python generateCombinations.py 4
+```
 
-### Full Options  
-```bash  
-usage: generateCombinations [-h] [--gpu] [--output OUTPUT] [--batch-size BATCH_SIZE]  
-                      [--max-gpu-chunk MAX_GPU_CHUNK]  
-                      length  
+Choose an output file and suppress the large-job prompt in automation:
 
-positional arguments:  
-  length                Length of the number combinations  
+```bash
+python generateCombinations.py 6 --output values.txt --yes
+```
 
-optional arguments:  
-  -h, --help            show this help message and exit  
-  --gpu                 Use GPU acceleration  
-  --output OUTPUT       Output file path (default: combinations.txt)  
-  --batch-size BATCH_SIZE  
-                        Number of records per batch (default: 1000)  
-  --max-gpu-chunk MAX_GPU_CHUNK  
-                        Max combinations per GPU chunk (default: 10000000)  
-```  
+Generate an inclusive/exclusive range:
 
-## ⚡ WPA/WPA2 Dictionary Generation Pro Tip  
+```bash
+python generateCombinations.py 8 --start 10000000 --stop 20000000 --output part-1.txt --yes
+```
 
-This tool is **perfect** for creating targeted dictionaries for:  
-- WPS PIN attacks (8-digit combinations)  
-- Phone number based passwords  
-- Date-based passwords (DDMMYYYY = 8 digits)  
-- ZIP code dictionaries  
+Stream to another program rather than creating a file:
 
-For best results with WPA:  
-```bash  
-# Generate 8-digit WPS PIN dictionary (sorted)  
-python generateCombinations 8 --output wps_pins.txt --batch-size 50000  
-sort -o wps_sorted.txt wps_pins.txt  
-```  
+```bash
+python generateCombinations.py 4 --output - --progress-interval 0 | your-program
+```
 
-## 🏎 Performance Benchmarks  
+Progress and errors use stderr, so stdout contains only generated data.
 
-| Digits | Combinations | GPU Time (RTX 3060) | CPU Time (i7-11800H) |  
-|--------|--------------|---------------------|----------------------|  
-| 4      | 10,000       | 0.12s               | 0.15s                |  
-| 6      | 1,000,000    | 0.45s               | 3.21s                |  
-| 8      | 100,000,000  | 42.7s               | 15m 23s              |  
+Write compressed output by using `--gzip` or a `.gz` suffix:
 
-## 📝 Notes  
+```bash
+python generateCombinations.py 7 --output values.txt.gz --yes
+```
 
-- For lengths > 6, consider using `--gpu` flag for best performance  
-- Output files can get large (8-digit = ~800MB)  
-- Always use responsibly and only on networks you own or have permission to test  
+The compressed file consists of standard concatenated gzip members and can be
+read normally by gzip-compatible tools.
 
-## 📜 License  
+## Safe interruption and resume
 
-MIT License - Use responsibly and ethically  
+File output is first written beside the destination as:
 
----
+- `<output>.part`
+- `<output>.checkpoint.json`
 
-### 🛡 Ethical Notice  
-**Important**: This tool is intended for:  
-- Security research  
-- Password recovery (your own systems)  
-- Educational purposes  
+The completed destination is replaced atomically only after generation and a
+final disk flush succeed. If a run is interrupted or fails, the previous output
+remains untouched and the sidecar files remain available:
 
-Never use this tool against any systems without **explicit permission**. Unauthorized testing is illegal. The developer is not responsible for any misuse of this tool.
+```bash
+python generateCombinations.py 8 --output values.txt --yes
+# After interruption, use exactly the same range/mode options:
+python generateCombinations.py 8 --output values.txt --resume --yes
+```
 
----
+Resume validates the width, range, compression, and CPU/GPU mode. It truncates
+any bytes written after the last committed checkpoint before continuing.
 
-### 💡 Advanced Usage Tips  
+Use `--force` to intentionally replace completed or incomplete output without a
+prompt. `--yes` accepts only the capacity warning and never implies overwrite
+permission.
 
-**1. Optimize for your hardware**:  
-```bash  
-# For GPUs with more VRAM (e.g., RTX 3090)  
-python generateCombinations 8 --gpu --max-gpu-chunk 100000000  
+## CUDA mode
 
-# For systems with fast SSDs  
-python generateCombinations 6 --batch-size 50000  
-```  
+```bash
+python generateCombinations.py 8 --gpu --max-gpu-chunk 5000000 --output values.txt --yes
+```
 
-**2. Combine with other tools**:  
-```bash  
-# Generate 8-digit combos and pipe to hashcat  
-python generateCombinations 8 | hashcat -m 22000 capture.hc22000  
-```  
+`--max-gpu-chunk` is a hard upper limit. CoreStorm also caps the allocation to
+half of currently free GPU memory. Digits are held as bytes and serialized to
+ASCII with NumPy rather than converted row-by-row in Python.
 
-**3. Generate specific ranges**:  
-Modify the code to generate only certain number ranges (e.g., 10000000-99999999 for 8-digit)  
+GPU failures return a nonzero status by default. To permit CPU fallback before
+the GPU has produced any output, opt in explicitly:
 
----
+```bash
+python generateCombinations.py 6 --gpu --gpu-fallback --output values.txt --yes
+```
 
-### 🐛 Troubleshooting  
+CoreStorm will not silently fall back after a GPU batch has been written, because
+restarting at that point could duplicate output.
 
-**Q**: Getting CUDA out of memory errors?  
-**A**: Reduce the chunk size:  
-```bash  
-python generateCombinations 8 --gpu --max-gpu-chunk 20000000  
-```  
+## Capacity planning
 
-**Q**: Output file is too large?  
-**A**: Compress it:  
-```bash  
-gzip wps_pins.txt  
-```  
+Uncompressed output requires exactly:
 
-**Q**: Need to stop and resume generation?  
-**A**: Use `split` command to break into smaller files first:  
-```bash  
-split -l 1000000 combinations.txt combo_chunk_  
-```  
+```text
+number of combinations × (width + 1) bytes
+```
 
----
+The extra byte is the LF newline. For example, all eight-digit values require
+900,000,000 bytes (about 858.31 MiB). CoreStorm checks available disk space before
+starting file output. The same conservative uncompressed estimate is used for
+gzip jobs.
 
-### 🌟 Star This Project  
+Jobs of at least one million combinations require confirmation unless `--yes` is
+provided. Width is limited to 18 digits to reject accidental, impractical jobs.
 
-If you find this tool useful, please consider starring the repository to show your support!  
+## Options
+
+Run the authoritative help output with:
+
+```bash
+python generateCombinations.py --help
+```
+
+Important options include:
+
+- `--start N` and `--stop N`: inclusive/exclusive numeric boundaries.
+- `--batch-size N`: number of CPU rows encoded per write batch.
+- `--max-gpu-chunk N`: maximum rows allocated in a CUDA batch.
+- `--progress-interval SECONDS`: reporting interval; `0` disables progress.
+- `--resume`: continue from matching sidecar files.
+- `--force`: intentionally replace existing completed/incomplete output.
+- `--yes`: accept the large-job confirmation.
+- `--output -`: emit data to stdout.
+
+Expected errors return status `1`, invalid CLI usage returns `2`, and an interrupt
+returns `130`.
+
+## Development and verification
+
+Install development tools and run the deterministic checks:
+
+```bash
+python -m pip install -e ".[dev]"
+python -m ruff check .
+python -m pytest
+```
+
+CI runs lint and tests on Windows and Linux with Python 3.10 and 3.13.
+
+The benchmark writes to the real temporary filesystem, verifies the resulting
+file with SHA-256, and reports end-to-end throughput:
+
+```bash
+python benchmarks/benchmark.py --length 6 --count 1000000
+```
+
+Benchmark CPU and CUDA output on the same machine, destination drive, width, and
+range before selecting a mode. Generation arithmetic is cheap; storage throughput
+can be the limiting factor.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
