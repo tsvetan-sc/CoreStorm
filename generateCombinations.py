@@ -29,6 +29,27 @@ class GenerationError(RuntimeError):
 ProgressCallback = Callable[[int], None]
 
 
+def durable_fsync(fd: int) -> None:
+    """Flush a file descriptor all the way to stable storage.
+
+    On macOS (including Apple silicon), ``fsync`` only hands data to the drive,
+    which may keep it in a volatile cache; ``F_FULLFSYNC`` is required for the
+    power-loss guarantee that checkpoints rely on. Filesystems that reject
+    ``F_FULLFSYNC`` (some network or FUSE mounts) fall back to ``fsync``.
+    """
+    if sys.platform == "darwin":
+        import fcntl
+
+        full_fsync = getattr(fcntl, "F_FULLFSYNC", None)
+        if full_fsync is not None:
+            try:
+                fcntl.fcntl(fd, full_fsync)
+                return
+            except OSError:
+                pass
+    os.fsync(fd)
+
+
 def iter_cpu_batches(
     length: int, start: int, stop: int, batch_size: int
 ) -> Iterator[tuple[int, bytes]]:
@@ -63,6 +84,11 @@ def generate_combinations_gpu(
         ) from exc
 
     if not cuda.is_available():
+        if sys.platform == "darwin":
+            raise GenerationError(
+                "GPU mode uses CUDA, which requires an NVIDIA GPU and is not "
+                "available on macOS (including Apple silicon). Run without --gpu."
+            )
         raise GenerationError("CUDA is not available on this system.")
     if stop > np.iinfo(np.int64).max:
         raise GenerationError("The requested GPU range exceeds CUDA's int64 limit.")
@@ -120,7 +146,7 @@ def write_checkpoint(path: Path, state: dict[str, object]) -> None:
         json.dump(state, handle, indent=2, sort_keys=True)
         handle.write("\n")
         handle.flush()
-        os.fsync(handle.fileno())
+        durable_fsync(handle.fileno())
     os.replace(temporary, path)
 
 
@@ -335,7 +361,7 @@ def write_batches(
         if checkpoint is not None and signature is not None:
             # Persist output before advancing the durable checkpoint. This ordering
             # prevents a power loss from making the checkpoint point past data.
-            os.fsync(handle.fileno())
+            durable_fsync(handle.fileno())
             state = dict(signature)
             state.update(next_index=next_index, part_size=handle.tell())
             write_checkpoint(checkpoint, state)
@@ -415,7 +441,7 @@ def run_generation(args: argparse.Namespace) -> None:
             reporter,
         )
         handle.flush()
-        os.fsync(handle.fileno())
+        durable_fsync(handle.fileno())
     os.replace(part, output)
     remove_if_present(checkpoint)
 

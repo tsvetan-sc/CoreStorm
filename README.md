@@ -9,7 +9,9 @@ to test.
 
 ## Installation
 
-Python 3.10 or newer is required.
+Python 3.10 or newer is required. CoreStorm runs natively on Linux, Windows,
+and macOS, including Apple silicon (arm64); use an arm64 Python build there rather
+than one running under Rosetta.
 
 ```bash
 python -m pip install -e .
@@ -23,6 +25,9 @@ python -m pip install -e ".[gpu]"
 ```
 
 CPU mode and even `--help` do not import those GPU dependencies.
+
+CUDA requires an NVIDIA GPU, so `--gpu` is not available on macOS, including
+Apple silicon. Use the default CPU mode there.
 
 ## Usage
 
@@ -77,6 +82,10 @@ python generateCombinations.py 8 --output values.txt --yes
 # After interruption, use exactly the same range/mode options:
 python generateCombinations.py 8 --output values.txt --resume --yes
 ```
+
+On macOS, durable flushes use `F_FULLFSYNC`, because a plain `fsync` there
+does not guarantee data has reached stable storage. Filesystems that reject it
+fall back to `fsync`.
 
 Resume validates the width, range, compression, and CPU/GPU mode. It truncates
 any bytes written after the last committed checkpoint before continuing.
@@ -153,7 +162,8 @@ python -m ruff check .
 python -m pytest
 ```
 
-CI runs lint and tests on Windows and Linux with Python 3.10 and 3.13.
+CI runs lint and tests on Linux, Windows, and macOS (Apple silicon) with Python
+3.10 and 3.13.
 
 The benchmark writes to the real temporary filesystem, verifies the resulting
 file with SHA-256, and reports end-to-end throughput:

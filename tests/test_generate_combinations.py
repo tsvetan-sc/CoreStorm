@@ -253,3 +253,42 @@ def test_disk_preflight_fails_before_creating_sidecars(
     assert not output.exists()
     assert not Path(f"{output}.part").exists()
     assert not Path(f"{output}.checkpoint.json").exists()
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="F_FULLFSYNC is macOS-only")
+def test_durable_fsync_uses_full_fsync_on_macos(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import fcntl
+
+    calls: list[int] = []
+    real_fcntl = fcntl.fcntl
+
+    def spy(fd: int, command: int, *args: object) -> object:
+        calls.append(command)
+        return real_fcntl(fd, command, *args)
+
+    monkeypatch.setattr(fcntl, "fcntl", spy)
+    with (tmp_path / "data").open("wb") as handle:
+        handle.write(b"x")
+        handle.flush()
+        generator.durable_fsync(handle.fileno())
+    assert calls == [fcntl.F_FULLFSYNC]
+
+
+def test_durable_fsync_falls_back_when_full_fsync_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fsynced: list[int] = []
+    monkeypatch.setattr(generator.sys, "platform", "darwin")
+    monkeypatch.setattr(generator.os, "fsync", fsynced.append)
+    if sys.platform == "darwin":
+        import fcntl
+
+        def reject(fd: int, command: int, *args: object) -> object:
+            raise OSError("F_FULLFSYNC not supported")
+
+        monkeypatch.setattr(fcntl, "fcntl", reject)
+    with (tmp_path / "data").open("wb") as handle:
+        generator.durable_fsync(handle.fileno())
+        assert fsynced == [handle.fileno()]
