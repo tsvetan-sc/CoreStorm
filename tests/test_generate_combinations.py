@@ -279,16 +279,16 @@ def test_durable_fsync_uses_full_fsync_on_macos(
 def test_durable_fsync_falls_back_when_full_fsync_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Use a stand-in fcntl module so this runs on every OS, including Windows,
+    # which has no fcntl module at all.
+    def reject(fd: int, command: int, *args: object) -> object:
+        raise OSError("F_FULLFSYNC not supported")
+
+    fake_fcntl = SimpleNamespace(F_FULLFSYNC=51, fcntl=reject)
     fsynced: list[int] = []
+    monkeypatch.setitem(sys.modules, "fcntl", fake_fcntl)
     monkeypatch.setattr(generator.sys, "platform", "darwin")
     monkeypatch.setattr(generator.os, "fsync", fsynced.append)
-    if sys.platform == "darwin":
-        import fcntl
-
-        def reject(fd: int, command: int, *args: object) -> object:
-            raise OSError("F_FULLFSYNC not supported")
-
-        monkeypatch.setattr(fcntl, "fcntl", reject)
     with (tmp_path / "data").open("wb") as handle:
         generator.durable_fsync(handle.fileno())
         assert fsynced == [handle.fileno()]
